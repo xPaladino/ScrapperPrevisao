@@ -1,5 +1,6 @@
 import pandas as pd
 import requests
+import re, json, os
 from bs4 import BeautifulSoup
 from datetime import timedelta
 from tkinter import messagebox
@@ -8,12 +9,93 @@ from tkinter import messagebox
 import processa_icones
 from workbook import formatar_workbook
 status_concluido = {"success": False}
+arquivo='favoritos.json'
+
+def carregar_favoritos():
+    """if os.path.exists(arquivo):
+           try:
+               with open("favoritos.json", "r") as file:
+                   favoritos = json.load(file)
+                   if favoritos:
+                       # Pega a primeira cidade e seu ID do dicionário
+                       cidade, id_cidade = list(favoritos.items())[0]
+                       return {"cidade": cidade, "id_cidade": id_cidade}
+           except (FileNotFoundError, json.JSONDecodeError):
+               pass
+           return None
+    else:
+           return None"""
+
+    if os.path.exists(arquivo):
+        try:
+            with open(arquivo, "r") as file:
+                favoritos = json.load(file)
+                if favoritos:
+                    return favoritos
+        except (json.JSONDecodeError, FileNotFoundError):
+            print("Erro ao carregar favoritos. O arquivo pode estar corrompido.")
+            return []
+    else:
+        return []
+
+
+def salvar_favoritos(novo_favorito):
+    arquivo = "favoritos.json"
+
+    # Carrega os favoritos existentes
+    favoritos = carregar_favoritos()  # Função carregada anteriormente
+
+    # Verifica se o favorito já existe
+    if any(fav["cidade"] == novo_favorito["cidade"] and fav["id_cidade"] == novo_favorito["id_cidade"] for fav in
+           favoritos):
+        print(f"Favorito já existe: {novo_favorito}")
+        return
+
+    # Adiciona o novo favorito
+    favoritos.append(novo_favorito)
+
+    try:
+        with open(arquivo, "w") as file:
+            json.dump(favoritos, file, indent=4)
+        print(f"Favorito salvo com sucesso: {novo_favorito}")
+    except Exception as e:
+        print(f"Erro ao salvar favoritos: {e}")
+    """try:
+        favoritos = carregar_favoritos()
+    except FileNotFoundError:
+        favoritos = []
+
+    favoritos.append(favorito)
+    with open ("favoritos.json","w") as arquivo:
+        json.dump(favoritos, arquivo, indent=4)"""
+    """favoritos = carregar_favoritos()
+    if not isinstance(favoritos, dict):
+        favoritos = {}
+
+    cidade = favorito["cidade"]
+    id_cidade = favorito["id_cidade"]
+    favoritos[cidade] = id_cidade
+
+    try:
+        with open(arquivo, "w") as file:
+            json.dump(favoritos, file, indent=4)
+        print(f"Cidade {cidade} com ID {id_cidade} salva com sucesso!")
+    except Exception as e:
+        print(f"Erro ao salvar favoritos: {e}")"""
 
 def buscar_id_cidade(cidade,api_key):
+#def buscar_id_cidade(cidade, api_key, arquivo='favoritos.json'):
+    #favoritos = carrega_favorito(arquivo)
+
+    #if cidade in favoritos:
+    #    print(f'ID {cidade} - {favoritos[cidade]}')
+    #    return favoritos[cidade]
+
     url = f"https://dataservice.accuweather.com/locations/v1/cities/search?q={cidade}&apikey={api_key}"
     try:
         resposta = requests.get(url, verify=False)
         if resposta.status_code == 200:
+
             print(resposta.json())
             return resposta.json()
         else:
@@ -47,7 +129,7 @@ def processar_dados(base_url, headers, numero_dias,cidade,data_inicio):
     lista_datas = adicionar_anos_nas_datas(data_inicio,numero_dias)
     list_pagina_dia = 1
     list_dia, list_temp, list_periodo = [], [], []
-    list_condicao = []
+    list_condicao, list_sensacao = [], []
     list_icone = []
     list_valor_prob, list_valor_precip, list_valor_horas_prep_dir = [], [], []
 
@@ -75,7 +157,7 @@ def processar_dados(base_url, headers, numero_dias,cidade,data_inicio):
 
             procura_temperatura = item.find_all('div', class_='weather')
             procura_condicao = item.find_all('div', class_='phrase')
-
+            procura_sensacao = item.find_all('div', class_='real-feel')
             for idx, x in enumerate(procura_temperatura):
                 procura_icone = item.find('svg', class_='icon')
                 if procura_icone and 'data-src' in procura_icone.attrs:
@@ -92,11 +174,32 @@ def processar_dados(base_url, headers, numero_dias,cidade,data_inicio):
                             trata_cond = y.text.strip()
                             list_condicao.append(trata_cond)
                             print(trata_cond)
+                    for cont, y in enumerate(procura_sensacao):
+                        if cont == 0:
+                            trata_sens = y.text.strip()
+                            match_sens = re.search(r"RealFeel®\s*(\d+)",trata_sens)
+                            if match_sens:
+                                sensacao = match_sens.group(1)
+                                print(sensacao)
+                                list_sensacao.append(sensacao)
+                            #print(match_sens)
+                            #list_sensacao.append(match_sens)
+                            # print(trata_sens)
                 if idx == 1:
                     for cont, z in enumerate(procura_condicao):
                         if cont == 1:
                             trata_cond = z.text.strip()
                             list_condicao.append(trata_cond)
+                            print(trata_cond)
+                    for cont, z in enumerate(procura_sensacao):
+                        if cont == 1:
+                            trata_sens = z.text.strip()
+                            match_sens = re.search(r"RealFeel®\s*(\d+)", trata_sens)
+                            if match_sens:
+                                sensacao2 = match_sens.group(1)
+                                print(sensacao2)
+                                list_sensacao.append(sensacao2)
+                            #print(match_sens)
 
                 temperatura = x.find('div', class_='temperature')
                 if temperatura:
@@ -145,7 +248,7 @@ def processar_dados(base_url, headers, numero_dias,cidade,data_inicio):
             break
 
     max_length = max(len(list_dia), len(list_periodo), len(list_temp), len(list_valor_precip),
-                     len(list_valor_prob), len(list_valor_horas_prep_dir), len(list_condicao), len(list_icone))
+                     len(list_valor_prob), len(list_valor_horas_prep_dir), len(list_condicao), len(list_sensacao), len(list_icone))
 
     def pad_list(lst, length):
         return lst + [None] * (length - len(lst))
@@ -157,6 +260,7 @@ def processar_dados(base_url, headers, numero_dias,cidade,data_inicio):
     list_valor_prob = pad_list(list_valor_prob, max_length)
     list_valor_horas_prep_dir = pad_list(list_valor_horas_prep_dir, max_length)
     list_condicao = pad_list(list_condicao,max_length)
+    list_sensacao = pad_list(list_sensacao, max_length)
     list_icone = pad_list(list_icone,max_length)
     dados = {
         'Cidade': cidade,
@@ -165,6 +269,7 @@ def processar_dados(base_url, headers, numero_dias,cidade,data_inicio):
         'Condição': list_condicao,
         'x': list_temp, #gambi
         'Temperatura': list_temp,
+        'Sensação': list_sensacao,
         'Precipitação': list_valor_precip,
 
         'Probabilidade': list_valor_prob,

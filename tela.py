@@ -1,7 +1,7 @@
 import tkinter as tk
-from distutils.command.config import config
-from tkinter import ttk, messagebox, filedialog, Toplevel
 
+from tkinter import ttk, messagebox, filedialog, Toplevel
+from processamento import carregar_favoritos, salvar_favoritos
 import processamento
 import processa_icones
 from PIL import Image, ImageTk
@@ -97,6 +97,7 @@ def selecionar_cidade(dados):
         selecionada = dados[index]
         resultado_selecao = selecionada["Key"]  # A chave da cidade selecionada
         print(f"Chave selecionada: {resultado_selecao}")
+
         root.quit()  # Fecha a janela após a seleção
         root.destroy()
 
@@ -121,93 +122,132 @@ def selecionar_cidade(dados):
         print("Nenhuma cidade foi selecionada.")
     return resultado_selecao
 
-def executar_processamento(cidade, dias, caminho_arquivo, data_inicio):
-    def selecionar_e_processar():
-        nonlocal cidade, dias, caminho_arquivo, data_inicio
+def iniciar_processamento(id_cidade, cidade, dias, caminho_arquivo, data_inicio):
+    """
+    Função que realiza o processamento com a cidade selecionada.
+    """
+    def processar():
+        nonlocal id_cidade, cidade, dias, caminho_arquivo, data_inicio
 
-        # Realiza a busca pela cidade usando buscar_id_cidade
-        dados_cidades = processamento.buscar_id_cidade(cidade, api_key)
-        print(dados_cidades)
-        if not dados_cidades:
-            messagebox.showerror("Erro", "Nenhuma cidade foi encontrada.")
-            return
+        # Formata a URL usando o ID da cidade selecionada
+        base_url = (f'https://www.accuweather.com/pt/{cidade}/'
+                    f'{id_cidade}/daily-weather-forecast/{id_cidade}')
 
-        # Abre a interface gráfica para o usuário selecionar uma cidade]
+        headers = {
+            'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/86.0.4240.198 Safari/537.36"
+        }
+
+        # Processa os dados
+        df = processamento.processar_dados(base_url, headers, dias, cidade, data_inicio)
+        print(cidade)
+        # Define o caminho do arquivo
+        if not caminho_arquivo.endswith('.xlsx'):
+            caminho_arquivo += '.xlsx'
+
+        diretorio = os.path.dirname(caminho_arquivo)
+        if not os.path.exists(diretorio):
+            try:
+                os.makedirs(diretorio)
+            except Exception as e:
+                messagebox.showerror("Erro", f"Não foi possível criar o diretório: {e}")
+                status_concluido["success"] = False
+                return
+
         try:
-
-            id_cidade = selecionar_cidade(dados_cidades)
-
-            print(id_cidade)
-            iniciar_processamento(id_cidade)
-
-        except Exception as e:
-            print(f"não consegui {e}")
-
-
-
-    def iniciar_processamento(id_cidade):
-        """
-        Função que realiza o processamento com a cidade selecionada.
-        """
-        status_concluido["success"] = False
-        def processar():
-            nonlocal id_cidade, cidade, dias, caminho_arquivo, data_inicio
-
-            # Formata a URL usando o ID da cidade selecionada
-            base_url = (f'https://www.accuweather.com/pt/{cidade}/'
-                        f'{id_cidade}/daily-weather-forecast/{id_cidade}')
-            headers = {
-                'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/86.0.4240.198 Safari/537.36"
-            }
-
-            # Processa os dados
-            df = processamento.processar_dados(base_url, headers, dias, cidade, data_inicio)
-
-
-            # Define o caminho do arquivo
-            if not caminho_arquivo.endswith('.xlsx'):
-                caminho_arquivo += '.xlsx'
-
-            diretorio = os.path.dirname(caminho_arquivo)
-            if not os.path.exists(diretorio):
-                try:
-                    os.makedirs(diretorio)
-                except Exception as e:
-                    messagebox.showerror("Erro", f"Não foi possível criar o diretório: {e}")
-                    status_concluido["success"] = False
-                    return
+            # Salva o arquivo no Excel
+            df.to_excel(caminho_arquivo, index=False)
 
             try:
-                # Salva o arquivo no Excel
-                df.to_excel(caminho_arquivo, index=False)
+                # Adiciona ícones ao Excel
+                processa_icones.adicionar_icones_ao_excel(df, caminho_arquivo)
 
-                try:
-                    # Adiciona ícones ao Excel
-                    processa_icones.adicionar_icones_ao_excel(df, caminho_arquivo)
-                except Exception as e:
-                    print(f"Erro processando ícones: {e}")
-                    messagebox.showerror("Erro", f"Erro ao adicionar ícones: {e}")
-
-                status_concluido["success"] = True
-                messagebox.showinfo(
-                    "Sucesso",
-                    f"Resultados referentes à cidade: {cidade} (ID: {id_cidade})\nDados salvos em {caminho_arquivo}"
-                )
             except Exception as e:
-                messagebox.showerror("Erro", f"Não foi possível salvar o arquivo: {e}")
-                status_concluido["success"] = False
+                print(f"Erro processando ícones: {e}")
+                messagebox.showerror("Erro", f"Erro ao adicionar ícones: {e}")
+            messagebox.showinfo(
+                "Sucesso",
+                f"Resultados referentes à cidade: {cidade} (ID: {id_cidade})\nDados salvos em {caminho_arquivo}"
+            )
+            status_concluido["success"] = True
+        except Exception as e:
+            messagebox.showerror("Erro", f"Não foi possível salvar o arquivo: {e}")
+            status_concluido["success"] = False
 
+    carregamento = tela_carregamento()
+    # Inicia o processamento em uma nova thread para não bloquear a interface
+    threading.Thread(target=processar, daemon=True).start()
+
+    def verificar_status():
+        if status_concluido["success"]:
             carregamento.destroy()
+        else:
+            carregamento.after(1000, verificar_status)
 
-        carregamento = tela_carregamento()
+    # Inicia a verificação do status
+    verificar_status()
 
-        # Inicia o processamento em uma nova thread para não bloquear a interface
-        threading.Thread(target=processar, daemon=True).start()
 
-    # Inicia o fluxo de seleção e processamento
-    selecionar_e_processar()
+def executar_processamento(cidade, dias, caminho_arquivo, data_inicio):
+    try:
+        print(cidade)
+        favoritos = carregar_favoritos()
+        #print(favoritos['cidade'])
+        if favoritos:  # Verifica se existem favoritos carregados
+            # Procura pela cidade nos favoritos
+            favorito_encontrado = next((fav for fav in favoritos if fav['cidade'] == cidade), None)
+
+            if favorito_encontrado:
+                usar_favorito = messagebox.askyesno(
+                    "Cidade Encontrada",
+                    f"Cidade de {favorito_encontrado['cidade']} identificada na nossa base de dados.\n"
+                    f"Deseja consulta-lá?\nID: {favorito_encontrado['id_cidade']}"
+                )
+                if usar_favorito:
+                    # Chama a função de iniciar o processamento diretamente com o favorito
+                    id_cidade = favorito_encontrado['id_cidade']
+                    iniciar_processamento(id_cidade, cidade, dias, caminho_arquivo, data_inicio)
+                    return
+        else:
+            print("Nenhum favorito encontrado ou arquivo inexistente.")
+
+        # Se não encontrou ou não usou o favorito, segue o processamento normal
+        selecionar_e_processar(cidade, dias, caminho_arquivo, data_inicio)
+
+    except Exception as e:
+        print(f"Erro ao executar o processamento: {e}")
+
+
+def selecionar_e_processar(cidade, dias, caminho_arquivo, data_inicio):
+    # Realiza a busca pela cidade usando buscar_id_cidade
+    dados_cidades = processamento.buscar_id_cidade(cidade, api_key)
+    print(dados_cidades)
+    if not dados_cidades:
+        messagebox.showerror("Erro", "Nenhuma cidade foi encontrada.")
+        return
+
+    # Abre a interface gráfica para o usuário selecionar uma cidade
+    try:
+        id_cidade = selecionar_cidade(dados_cidades)
+
+        #favorito = {"id_cidade": id_cidade, "cidade": cidade}
+        favorito = {"cidade": cidade, "id_cidade": id_cidade}
+        print(cidade)
+        salvar_favorito = messagebox.askyesno(
+            "Salvar?",
+            f"Deseja salvar essa cidade como favorita?\nCidade: {cidade} (ID: {id_cidade})"
+        )
+        if salvar_favorito:
+            salvar_favoritos(favorito)
+        print(id_cidade)
+        # Chama a função de iniciar o processamento com a cidade selecionada
+        iniciar_processamento(id_cidade, cidade, dias, caminho_arquivo, data_inicio)
+
+    except Exception as e:
+        print(f"não consegui {e}")
+
 def formatar_cidade(cidade):
     cidade_formatada = unidecode(cidade).replace(' ', '').lower()
+    print(cidade_formatada)
     return cidade_formatada
 
 
@@ -223,18 +263,6 @@ def browser(entry):
         entry.insert(tk.END, seleciona)
     else:
         messagebox.showwarning("Atenção", "Por favor, selecione um local válido para salvar o arquivo.")
-
-
-"""def browser(entry):
-    seleciona = filedialog.askdirectory()
-    if seleciona:
-        entry.delete(0, tk.END)
-        entry.insert(tk.END, seleciona)
-    else:
-        messagebox.showwarning("Atenção","Por favor, selecione um diretório antes de continuar.")
-
-"""
-
 
 def criar_menu(root):
 
