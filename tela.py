@@ -180,11 +180,13 @@ def iniciar_processamento(id_cidade, cidade, dias, caminho_arquivo, data_inicio)
     def verificar_status():
         if status_concluido["success"]:
             carregamento.destroy()
+            status_concluido["success"] = False
         else:
             carregamento.after(1000, verificar_status)
 
     # Inicia a verificação do status
     verificar_status()
+
 
 
 def executar_processamento(cidade, dias, caminho_arquivo, data_inicio):
@@ -401,7 +403,7 @@ def iniciar(local, inicio_dado, fim_dado, salvar):
     data_inicio_dt = datetime.strptime(dia_inicio, "%d/%m/%Y")
     data_fim_dt = datetime.strptime(dia_fim, "%d/%m/%Y")
 
-    numero_dias = (data_fim_dt - data_inicio_dt).days
+    numero_dias = (data_fim_dt - data_inicio_dt).days+1
     if not cidade or not dia_inicio or not dia_fim:
         messagebox.showwarning("Atenção", "Por favor, insira todos os dados")
         return
